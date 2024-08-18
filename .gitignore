@@ -26,3 +26,4 @@ secrets
 
 # Environment variables
 backend/.env
+.env
