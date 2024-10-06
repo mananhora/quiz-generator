@@ -1,48 +1,40 @@
-from flask import Flask, request, jsonify # type: ignore
-from dotenv import load_dotenv # type: ignore
-import openai # type: ignore
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 import os
-from flask_cors import CORS # type: ignore
+from flask_cors import CORS
+from langchain import OpenAI, LLMChain
+from langchain.prompts import PromptTemplate
+import numpy as np
 
+# Load environment variables from .env file
 load_dotenv()
 
 app = Flask(__name__)
 
-# CORS(app, origins=["http://localhost:5173"])  # Allow requests from this specific origin
+# Allow all origins for testing, adjust to specific domains in production
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# cors = CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+# Setup OpenAI API using LangChain
+openai_api_key = os.getenv('OPENAI_API_KEY')
 
-CORS(app, resources={r"/*": {"origins": "*"}})  # Allow all origins for testing
-
-
-
-
-openai.api_key = os.getenv('OPENAI_API_KEY')
-client = openai
+# LangChain components
+llm = OpenAI(model='gpt-3.5-turbo', openai_api_key=openai_api_key)
+prompt_template = PromptTemplate(
+    input_variables=["book_content"],
+    template="Generate a quiz based on the following book content: {book_content}"
+)
 
 @app.route('/generate-quiz', methods=['POST'])
 def generate_quiz():
-    print ("hello in generatze quiz now whats up\n");
     data = request.json
     book_content = data.get('bookContent')
+    
     try:
-        response = client.chat.completions.create(
-            model='gpt-3.5-turbo',
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": f"Generate a quiz based on the following book content: {book_content}"}
-            ]
-        )
-        print ("bla\n")
-        print (response.choices[0])
-        print ("bla\n")
-        print (response.choices[0].message)
-        print ("bla\n")
-        # print (response.choices[0].message.content)
-        print ("bla\n")
-        quiz = response.choices[0].message.content
-        print ("\n bla bla")
-        return jsonify({'quiz': quiz})
+        # Using LangChain's LLMChain to process the prompt
+        chain = LLMChain(llm=llm, prompt=prompt_template)
+        response = chain.run(book_content)
+
+        return jsonify({'quiz': response})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
