@@ -28,3 +28,4 @@ secrets
 backend/.env
 .env
 backend/.env
+/.venv
