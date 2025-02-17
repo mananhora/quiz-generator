@@ -3,7 +3,7 @@ import './index.css';
 import debounce from 'lodash/debounce';
 import CompletionCelebration from './components/CompletionCelebration';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 console.log('API URL:', API_URL);  // Temporary debug log
 
 function App() {
@@ -22,7 +22,7 @@ function App() {
   const generateFlashcards = async (retries = 3) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/generate-flashcards`, {
+      const response = await fetch(`${API_URL}/api/generate_flashcards`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
