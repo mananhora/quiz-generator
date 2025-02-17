@@ -18,3 +18,18 @@ HOW TO RUN THE APP
 
 2. RUN THE FRONTEND APP
      npm run dev
+
+## Deployment
+
+### Frontend (Vercel)
+1. Connect your GitHub repository to Vercel
+2. Add environment variable in Vercel project settings:
+    - `VITE_API_URL`: Your backend API URL
+
+### Backend
+Deploy your Flask backend to a hosting service (e.g., Heroku, DigitalOcean, etc.)
+Make sure to:
+1. Set environment variables:
+    - `ANTHROPIC_API_KEY`
+    - `FLASK_ENV=production`
+2. Update CORS settings with your Vercel domain

@@ -5,6 +5,7 @@ from flask_cors import CORS
 import anthropic
 import logging
 import json
+from datetime import timedelta
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -15,7 +16,16 @@ app = Flask(__name__)
 app.debug = os.getenv('FLASK_ENV') == 'development'
 
 # Enable CORS
-CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:5173",  # Local development
+            "https://quiz-generator-mananhoras-projects.vercel.app",  # Your Vercel domain
+        ],
+        "methods": ["POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 # Load environment variables
 load_dotenv()
