@@ -1,189 +1,203 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import './index.css';
+import debounce from 'lodash/debounce';
+import CompletionCelebration from './components/CompletionCelebration';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 function App() {
   const [bookContent, setBookContent] = useState('');
-  const [questions, setQuestions] = useState([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [userAnswers, setUserAnswers] = useState({});
-  const [feedback, setFeedback] = useState('');
-  const [isQuizFinished, setIsQuizFinished] = useState(false);
+  const [flashcards, setFlashcards] = useState([]);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [isCardFlipped, setIsCardFlipped] = useState(false);
+  const [reviewStack, setReviewStack] = useState([]);
+  const [isFlashcardMode, setIsFlashcardMode] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [cache, setCache] = useState({});
+  const [totalCardsStudied, setTotalCardsStudied] = useState(0);
+  const [initialCardCount, setInitialCardCount] = useState(0);
+  const [showCelebration, setShowCelebration] = useState(false);
 
-  const generateQuiz = async () => {
-    console.log("Generating quiz...");
+  const generateFlashcards = async (retries = 3) => {
+    setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/generate-quiz', {
+      const response = await fetch(`${API_URL}/generate-flashcards`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ bookContent }),
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
-      if (data.quiz) {
-        console.log("Quiz generated successfully:", data.quiz);
-        setQuestions(data.quiz);
-        setCurrentQuestionIndex(0);
-        setUserAnswers({});
-        setFeedback('');
-        setIsQuizFinished(false);
-        console.log("Quiz state reset for new quiz");
-      } else {
-        console.error("No quiz data in response");
+      if (data.flashcards) {
+        setFlashcards(data.flashcards);
+        setInitialCardCount(data.flashcards.length);
+        setCurrentCardIndex(0);
+        setIsCardFlipped(false);
+        setReviewStack([]);
+        setIsFlashcardMode(true);
+        setTotalCardsStudied(0);
       }
     } catch (error) {
-      console.error("Error generating quiz:", error);
+      if (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await generateFlashcards(retries - 1);
+      } else {
+        alert('Unable to generate flashcards. Please try again later.');
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleNextQuestion = () => {
-    console.log("Attempting to move to next question");
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(prevIndex => {
-        console.log("Moving to next question. New index:", prevIndex + 1);
-        return prevIndex + 1;
-      });
-      setFeedback('');
+  const debouncedGenerate = useCallback(
+    debounce(async () => {
+      if (!bookContent.trim()) return;
+      await generateFlashcards();
+    }, 500),
+    [bookContent]
+  );
+
+  const handleCardFlip = () => {
+    setIsCardFlipped(!isCardFlipped);
+  };
+
+  const handleGotIt = () => {
+    setTotalCardsStudied(prev => prev + 1);
+    if (reviewStack.includes(flashcards[currentCardIndex])) {
+      setReviewStack(stack => stack.filter(card => card !== flashcards[currentCardIndex]));
+    }
+    if (currentCardIndex < flashcards.length - 1) {
+      setCurrentCardIndex(currentCardIndex + 1);
+      setIsCardFlipped(false);
     } else {
-      console.log("Last question answered. Setting quiz to finished.");
-      setIsQuizFinished(true);
+      setShowCelebration(true);
     }
   };
 
-  const handlePreviousQuestion = () => {
-    console.log("Attempting to move to previous question");
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
-      setFeedback('');
-      console.log("Moved to previous question. New index:", currentQuestionIndex - 1);
+  const handleNeedsReview = () => {
+    if (!reviewStack.includes(flashcards[currentCardIndex])) {
+      setReviewStack([...reviewStack, flashcards[currentCardIndex]]);
+    }
+    setFlashcards(cards => [...cards, cards[currentCardIndex]]);
+    if (currentCardIndex < flashcards.length - 1) {
+      setCurrentCardIndex(currentCardIndex + 1);
+      setIsCardFlipped(false);
     }
   };
 
-  const handleOptionSelect = async (option) => {
-    console.log("Option selected:", option);
-    setUserAnswers(prevAnswers => {
-      const newAnswers = {
-        ...prevAnswers,
-        [currentQuestionIndex]: option
-      };
-      console.log("Updated user answers:", newAnswers);
-      return newAnswers;
-    });
-
-    try {
-      const response = await fetch('http://localhost:5000/check-answer', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          questionIndex: currentQuestionIndex,
-          selectedOption: option,
-          correctOption: questions[currentQuestionIndex].correct
-        }),
-      });
-      const data = await response.json();
-      console.log("Answer check response:", data);
-      if (data.isCorrect) {
-        setFeedback('Correct!');
-        if (currentQuestionIndex === questions.length - 1) {
-          console.log("Last question answered correctly. Finishing quiz.");
-          setIsQuizFinished(true);
-        }
-      } else {
-        setFeedback('Incorrect. Please try again.');
-      }
-    } catch (error) {
-      console.error("Error checking answer:", error);
-    }
+  const handleReviewAgain = () => {
+    setShowCelebration(false);
+    setCurrentCardIndex(0);
+    setIsCardFlipped(false);
+    setTotalCardsStudied(0);
   };
 
-  const redoQuiz = () => {
-    console.log("Redoing quiz");
-    setCurrentQuestionIndex(0);
-    setUserAnswers({});
-    setFeedback('');
-    setIsQuizFinished(false);
-    console.log("Quiz state reset for redo");
+  const handleBackToLibrary = () => {
+    setShowCelebration(false);
+    setIsFlashcardMode(false);
+    setBookContent('');
+    setFlashcards([]);
+    setCurrentCardIndex(0);
+    setIsCardFlipped(false);
+    setTotalCardsStudied(0);
   };
-
-  useEffect(() => {
-    console.log("useEffect triggered");
-    console.log("Current question index:", currentQuestionIndex);
-    console.log("Is quiz finished?", isQuizFinished);
-  }, [currentQuestionIndex, isQuizFinished]);
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Quiz Generator</h1>
-      <textarea
-        className="w-full p-2 border border-gray-300 rounded mb-4"
-        rows="10"
-        placeholder="Enter book content here..."
-        value={bookContent}
-        onChange={(e) => setBookContent(e.target.value)}
-      ></textarea>
-      <button
-        className="bg-blue-500 text-white p-2 rounded"
-        onClick={generateQuiz}
-      >
-        Generate Quiz
-      </button>
-      {questions.length > 0 && !isQuizFinished && (
-        <div className="mt-4 p-4 border border-gray-300 rounded">
-          <h2 className="text-xl font-bold mb-2">Generated Quiz</h2>
-          <div className="mb-4">
-            <p className="font-bold">Question {currentQuestionIndex + 1}:</p>
-            <p>{questions[currentQuestionIndex].question}</p>
-            <div className="mt-2">
-              {questions[currentQuestionIndex].options.map((option, index) => (
-                <div key={index} className="flex items-center mb-2">
-                  <input
-                    type="radio"
-                    id={`option-${index}`}
-                    name={`question-${currentQuestionIndex}`}
-                    value={option}
-                    checked={userAnswers[currentQuestionIndex] === option}
-                    onChange={() => handleOptionSelect(option)}
-                    className="mr-2"
-                  />
-                  <label htmlFor={`option-${index}`}>{option}</label>
-                </div>
-              ))}
-            </div>
-            {feedback && (
-              <p className={`mt-2 font-bold ${feedback === 'Correct!' ? 'text-green-500' : 'text-red-500'}`}>
-                {feedback}
-              </p>
-            )}
-          </div>
-          <div className="flex justify-between">
-            <button
-              className="bg-gray-500 text-white p-2 rounded"
-              onClick={handlePreviousQuestion}
-              disabled={currentQuestionIndex === 0}
-            >
-              Previous Question
-            </button>
-            <button
-              className="bg-green-500 text-white p-2 rounded"
-              onClick={handleNextQuestion}
-              disabled={currentQuestionIndex === questions.length - 1 || feedback !== 'Correct!'}
-            >
-              Next Question
-            </button>
-          </div>
-        </div>
-      )}
-      {isQuizFinished && (
-        <div className="mt-4 p-4 border border-gray-300 rounded">
-          <h2 className="text-2xl font-bold mb-4 text-green-500">FINISHED! Nice Job!</h2>
+    <div className="container mx-auto p-4 bg-background min-h-screen text-textColor font-inter">
+      <h1 className="text-4xl font-playfair text-center mb-8 text-primary">MemoRead</h1>
+      <div className="flex justify-center mb-6">
+        <div className="w-full max-w-3xl px-4">
+          <input
+            type="text"
+            className="w-full p-3 border border-primary/20 rounded bg-white/80 font-source text-lg min-w-[500px]"
+            placeholder="Enter the name of the book you want to revise..."
+            value={bookContent}
+            onChange={(e) => setBookContent(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                debouncedGenerate();
+              }
+            }}
+          />
           <button
-            className="bg-blue-500 text-white p-2 rounded"
-            onClick={redoQuiz}
+            className={`${
+              isLoading ? 'bg-primary/50' : 'bg-primary'
+            } text-white p-3 rounded flex items-center justify-center mt-2 w-full text-lg`}
+            onClick={debouncedGenerate}
+            disabled={isLoading}
           >
-            Redo the quiz
+            {isLoading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Generating...
+              </>
+            ) : (
+              'Help me recall'
+            )}
           </button>
+        </div>
+      </div>
+
+      {isFlashcardMode && flashcards.length > 0 && (
+        <div className="mt-6 max-w-2xl mx-auto">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex-1 h-1 bg-primary/10 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-progress transition-all duration-300"
+                style={{ width: `${(totalCardsStudied / initialCardCount) * 100}%` }}
+              />
+            </div>
+            <span className="text-sm text-textColor/70 font-medium">
+              {flashcards.length - currentCardIndex} remaining
+            </span>
+          </div>
+          <div className="relative">
+            <div 
+              className={`flashcard-container cursor-pointer ${isCardFlipped ? 'flipped' : ''}`}
+              onClick={handleCardFlip}
+            >
+              <div className="flashcard">
+                <div className="flashcard-front p-6 rounded-lg shadow-lg bg-white">
+                  <p className="text-xl font-source">{flashcards[currentCardIndex].question}</p>
+                </div>
+                <div className="flashcard-back p-6 rounded-lg shadow-lg bg-white">
+                  <p className="text-xl font-source">{flashcards[currentCardIndex].answer}</p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <div className="flex gap-2">
+                <button
+                  className="bg-success text-white px-4 py-2 rounded hover:bg-success/90 transition-colors"
+                  onClick={handleGotIt}
+                >
+                  Got It
+                </button>
+                <button
+                  className="bg-review text-white px-4 py-2 rounded hover:bg-review/90 transition-colors"
+                  onClick={handleNeedsReview}
+                >
+                  Needs Review
+                </button>
+              </div>
+            </div>
+          </div>
+          {showCelebration && (
+            <CompletionCelebration
+              onReviewAgain={handleReviewAgain}
+              onBackToLibrary={handleBackToLibrary}
+            />
+          )}
         </div>
       )}
     </div>

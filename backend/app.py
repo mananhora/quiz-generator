@@ -2,67 +2,92 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import os
 from flask_cors import CORS
-from langchain_community.chat_models import ChatOpenAI
-from langchain.chains import LLMChain
-from langchain.prompts import ChatPromptTemplate
+import anthropic
+import logging
+import json
 
-load_dotenv()
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
+# Initialize Flask app with explicit debug mode
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+app.debug = os.getenv('FLASK_ENV') == 'development'
 
-openai_api_key = os.getenv('OPENAI_API_KEY')
-chat = ChatOpenAI(model_name='gpt-3.5-turbo', openai_api_key=openai_api_key)
+# Enable CORS
+CORS(app)
 
-quiz_prompt = ChatPromptTemplate.from_template(
-    """Generate a quiz based on the following book content. 
-    For each question, provide 4 options (a, b, c, d) and indicate the correct answer.
-    Format each question as follows:
-    Question: [question text]
-    a) [option a]
-    b) [option b]
-    c) [option c]
-    d) [option d]
-    Correct: [correct option letter]
+# Load environment variables
+load_dotenv()
+claude_api_key = os.getenv('ANTHROPIC_API_KEY', '')
+if not claude_api_key:
+    raise ValueError("No Claude API key found in environment variables")
 
-    Book content: {book_content}
-    """
-)
+# Initialize Claude client
+claude = anthropic.Anthropic(api_key=claude_api_key)
 
-@app.route('/generate-quiz', methods=['POST'])
-def generate_quiz():
+@app.route('/generate-flashcards', methods=['POST'])
+def generate_flashcards():
+    logger.info("Generate flashcards endpoint hit")
+    if not request.is_json:
+        logger.error("Request is not JSON")
+        return jsonify({"error": "Request must be JSON"}), 400
+    
     data = request.json
+    logger.info(f"Received data: {data}")
+    
     book_content = data.get('bookContent')
-    
+    if not book_content:
+        logger.error("No book content provided")
+        return jsonify({"error": "No book content provided"}), 400
+
     try:
-        chain = LLMChain(llm=chat, prompt=quiz_prompt)
-        response = chain.run(book_content)
+        message = claude.messages.create(
+            model="claude-3-opus-20240229",
+            max_tokens=1000,
+            temperature=0.7,
+            system="You are a helpful AI that creates educational flashcards. You must respond with ONLY valid JSON, no other text.",
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"""Create 5 focused flashcards from this text. Return ONLY a JSON object with this structure:
+                    {{"flashcards": [
+                        {{"question": "...", "answer": "..."}}
+                    ]}}
+                    Content: {book_content}"""
+                }
+            ]
+        )
+        
+        response_content = message.content[0].text
+        
+        # Extract just the JSON part if there's extra text
+        try:
+            # Find the first '{' and last '}'
+            json_start = response_content.find('{')
+            json_end = response_content.rfind('}') + 1
+            if json_start >= 0 and json_end > 0:
+                json_str = response_content[json_start:json_end]
+                flashcards_data = json.loads(json_str)
+            else:
+                raise ValueError("No JSON object found in response")
+                
+            return jsonify(flashcards_data)
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing JSON response: {str(e)}")
+            return jsonify({
+                'error': 'Invalid response format',
+                'details': str(e)
+            }), 500
 
-        # Parse the response into a structured format
-        questions = []
-        for question in response.split('\n\n'):
-            lines = question.split('\n')
-            q = {
-                'question': lines[0].replace('Question: ', ''),
-                'options': [line.strip() for line in lines[1:5]],
-                'correct': lines[5].replace('Correct: ', '')
-            }
-            questions.append(q)
-
-        return jsonify({'quiz': questions})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/check-answer', methods=['POST'])
-def check_answer():
-    data = request.json
-    question_index = data.get('questionIndex')
-    selected_option = data.get('selectedOption')
-    correct_option = data.get('correctOption')
-    
-    is_correct = selected_option == correct_option
-    
-    return jsonify({'isCorrect': is_correct})
+        logger.error(f"Error generating flashcards: {str(e)}", exc_info=True)
+        return jsonify({
+            'error': 'Failed to generate flashcards',
+            'details': str(e)
+        }), 500
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    # Run the app with debug mode
+    logger.info("Starting Flask server...")
+    app.run(host='0.0.0.0', port=5001, debug=True)

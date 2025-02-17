@@ -12,6 +12,7 @@ Currently, two official plugins are available:
 HOW TO RUN THE APP
 1. RUN THE BACKEND APP
     cd backend
+    source ../.venv/bin/activate  (activate the virtual environment)
    python app.py
    the app should now be running on http://localhost:5000.
 
