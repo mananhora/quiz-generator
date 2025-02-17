@@ -8,25 +8,16 @@ import json
 from datetime import timedelta
 
 # Set up logging
-logging.basicConfig(level=logging.DEBUG)
+log_level = logging.DEBUG if os.getenv('FLASK_ENV') == 'development' else logging.INFO
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app with explicit debug mode
 app = Flask(__name__)
 app.debug = os.getenv('FLASK_ENV') == 'development'
-
-# Enable CORS
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "http://localhost:5173",  # Local development
-            "https://quiz-generator-sigma.vercel.app",  # Your Vercel frontend
-            "https://quiz-generator-mananhoras-projects.vercel.app",  # Alternative domain
-        ],
-        "methods": ["POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
-    }
-})
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +27,24 @@ if not claude_api_key:
 
 # Initialize Claude client
 claude = anthropic.Anthropic(api_key=claude_api_key)
+
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Local development
+    "https://quiz-generator-sigma.vercel.app",  # Production frontend
+]
+
+# Enable CORS
+CORS(app, resources={
+    r"/*": {
+        "origins": ALLOWED_ORIGINS,
+        "methods": ["POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy"}), 200
 
 @app.route('/generate-flashcards', methods=['POST'])
 def generate_flashcards():
@@ -99,6 +108,5 @@ def generate_flashcards():
         }), 500
 
 if __name__ == '__main__':
-    # Run the app with debug mode
     logger.info("Starting Flask server...")
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run()
