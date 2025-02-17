@@ -3,7 +3,7 @@ services:
     name: memoread-backend
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --config gunicorn_config.py --pythonpath . 'app:app'
+    startCommand: gunicorn --bind=0.0.0.0:10000 app:app
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
