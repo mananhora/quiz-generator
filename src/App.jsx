@@ -4,6 +4,7 @@ import debounce from 'lodash/debounce';
 import CompletionCelebration from './components/CompletionCelebration';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+console.log('API URL:', API_URL);  // Temporary debug log
 
 function App() {
   const [bookContent, setBookContent] = useState('');

@@ -20,7 +20,8 @@ CORS(app, resources={
     r"/*": {
         "origins": [
             "http://localhost:5173",  # Local development
-            "https://quiz-generator-mananhoras-projects.vercel.app",  # Your Vercel domain
+            "https://quiz-generator-sigma.vercel.app",  # Your Vercel frontend
+            "https://quiz-generator-mananhoras-projects.vercel.app",  # Alternative domain
         ],
         "methods": ["POST", "OPTIONS"],
         "allow_headers": ["Content-Type"]
