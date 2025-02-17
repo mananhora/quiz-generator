@@ -4,22 +4,27 @@ import anthropic
 
 def generate_flashcards(book_content):
     claude = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY', ''))
+    print("Anthropic API key loaded")
+    try:
+        message = claude.beta.messages.create(
+            model="claude-3-opus-20240229",
+            max_tokens=1000,
+            temperature=0.7,
+            system="You are a helpful AI that creates educational flashcards. You must respond with ONLY valid JSON, no other text.",
+            messages=[{
+                "role": "user",
+                "content": f"""Create 5 focused flashcards from this text. Return ONLY a JSON object with this structure:
+                {{"flashcards": [
+                    {{"question": "...", "answer": "..."}}
+                ]}}
+                Content: {book_content}"""
+            }]
+        )
+    except Exception as e:
+        print(f"Error creating message: {e}")
+        raise e
     
-    message = claude.messages.create(
-        model="claude-3-opus-20240229",
-        max_tokens=1000,
-        temperature=0.7,
-        system="You are a helpful AI that creates educational flashcards. You must respond with ONLY valid JSON, no other text.",
-        messages=[{
-            "role": "user",
-            "content": f"""Create 5 focused flashcards from this text. Return ONLY a JSON object with this structure:
-            {{"flashcards": [
-                {{"question": "...", "answer": "..."}}
-            ]}}
-            Content: {book_content}"""
-        }]
-    )
-    
+    print("Message created")
     response_content = message.content[0].text
     json_start = response_content.find('{')
     json_end = response_content.rfind('}') + 1
@@ -70,6 +75,7 @@ def handler(event, context):
 
 # For local development
 if __name__ == "__main__":
+    print("Starting local server on http://localhost:3000")
     from flask import Flask, request, jsonify
     from flask_cors import CORS
     from dotenv import load_dotenv
@@ -83,11 +89,15 @@ if __name__ == "__main__":
     @app.route('/api/generate_flashcards', methods=['POST'])
     def flask_handler():
         try:
+            print("Received request")
             book_content = request.json.get('bookContent')
             if not book_content:
+                print("No book content provided")
                 return jsonify({'error': 'No book content provided'}), 400
                 
+            print("Generating flashcards")
             flashcards_data = generate_flashcards(book_content)
+            print("Flashcards generated")
             return jsonify(flashcards_data)
             
         except Exception as e:
